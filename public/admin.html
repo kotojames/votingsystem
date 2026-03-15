@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — VoteLive</title>
+  <meta name="description" content="Admin voter dashboard to manage polls, view voter activity, and monitor real-time stats." />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .donut-svg { width: 130px; height: 130px; transform: rotate(-90deg); }
+    .donut-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 18; }
+    .donut-seg { fill: none; stroke-width: 18; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease; }
+    .pulse-row { animation: pulseRow 1s ease; }
+    @keyframes pulseRow { 0%,100%{background:transparent} 50%{background:rgba(99,102,241,0.08)} }
+    .trend-up { color: var(--green); font-size:0.75rem; }
+    .mini-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 4px; overflow:hidden; }
+    .mini-bar-fill { height:100%; border-radius:2px; background: linear-gradient(90deg, var(--accent), var(--purple)); transition: width 0.5s; }
+    .voter-chip {
+      display:inline-flex; align-items:center; gap:6px;
+      background:rgba(255,255,255,0.04); border:1px solid var(--border);
+      border-radius: 100px; padding: 4px 10px; font-size:0.75rem;
+    }
+    .chip-avatar {
+      width:20px; height:20px; border-radius:50%;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:white; font-weight:700;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="index.html"><div class="logo-icon">🗳️</div> VoteLive</a>
+    <div class="navbar-links">
+      <div class="conn-status">
+        <div class="conn-dot disconnected" id="conn-dot"></div>
+        <span id="conn-label" style="color:var(--text-muted);">Connecting…</span>
+      </div>
+      <a href="index.html" class="nav-link">Polls</a>
+      <a href="create.html" class="nav-link">+ Create</a>
+      <a href="login.html" class="nav-link">Login</a>
+      <a href="admin.html" class="nav-link active">Admin</a>
+    </div>
+  </nav>
+
+  <div id="toast-container"></div>
+
+  <div class="container">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-end;">
+      <div>
+        <h1 class="page-title">Admin Dashboard</h1>
+        <p class="page-subtitle">Monitor votes, manage polls, and track voter activity in real-time.</p>
+      </div>
+      <div style="display:flex; gap:0.75rem;">
+        <a href="create.html" class="btn btn-primary">✨ New Poll</a>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-label">Total Polls</div><div class="stat-value" id="st-polls">—</div></div>
+      <div class="stat-card"><div class="stat-icon">🟢</div><div class="stat-label">Active Polls</div><div class="stat-value" id="st-active">—</div></div>
+      <div class="stat-card"><div class="stat-icon">🗳️</div><div class="stat-label">Votes Cast</div><div class="stat-value" id="st-votes">—</div></div>
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-label">Unique Voters</div><div class="stat-value" id="st-voters">—</div></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('overview')">📈 Overview</button>
+      <button class="tab-btn" onclick="switchTab('polls')">📋 Polls</button>
+      <button class="tab-btn" onclick="switchTab('voters')">👥 Voter Activity</button>
+    </div>
+
+    <!-- Overview Tab -->
+    <div class="tab-panel active" id="tab-overview">
+      <div class="split-layout">
+        <!-- Donut Chart + Leaderboard -->
+        <div class="card" style="padding:1.75rem;">
+          <div class="section-title">🏆 Poll Leaderboard</div>
+          <div id="leaderboard-content">
+            <div style="color:var(--text-muted); font-size:0.875rem;">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Live Activity Feed -->
+        <div class="card" style="padding:1.75rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div class="section-title" style="margin:0;">⚡ Live Vote Feed</div>
+            <span class="live-badge"><span class="live-dot"></span> Streaming</span>
+          </div>
+          <div id="activity-feed" class="activity-feed" style="max-height:380px; overflow-y:auto;">
+            <div style="color:var(--text-muted); font-size:0.875rem; padding:1rem 0;">Waiting for votes…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Donut Section -->
+      <div class="card" style="margin-top:1.25rem; padding:1.75rem;">
+        <div class="section-title">🍩 Vote Distribution (by Poll)</div>
+        <div id="donut-wrap" class="donut-wrap" style="flex-wrap:wrap; gap:2rem;">
+          <div style="color:var(--text-muted); font-size:0.875rem;">No data yet…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Polls Tab -->
+    <div class="tab-panel" id="tab-polls">
+      <div id="polls-table-section">
+        <div style="color:var(--text-muted);">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Voter Activity Tab -->
+    <div class="tab-panel" id="tab-voters">
+      <div class="split-layout" style="margin-bottom:1.25rem;">
+        <div class="card" style="padding:1.5rem;">
+          <div class="section-title">🎯 Participation Rate</div>
+          <div id="participation-rate" style="font-size:2.5rem; font-weight:800; background:linear-gradient(135deg,var(--accent-light),var(--purple)); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">—</div>
+          <div style="font-size:0.8rem; color:var(--text-muted); margin-top:0.25rem;">Avg votes per poll</div>
+        </div>
+        <div class="card" style="padding:1.5rem;">
+          <div class="section-title">🕐 Latest Vote</div>
+          <div id="latest-vote-label" style="font-size:1rem; font-weight:700; color:var(--text-primary);">—</div>
+          <div id="latest-vote-time" style="font-size:0.8rem; color:var(--text-muted); margin-top:0.25rem;">—</div>
+        </div>
+      </div>
+      <div class="card" style="padding:1.75rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+          <div class="section-title" style="margin:0;">🗃️ Recent Vote Log</div>
+          <div id="voter-filter" style="display:flex; gap:0.5rem;">
+            <input id="voter-search" class="form-input" type="text" placeholder="Search session/option…"
+              style="padding:6px 12px; font-size:0.8rem; width:220px;"
+              oninput="filterVoterLog()" />
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Session ID</th>
+                <th>Poll</th>
+                <th>Voted For</th>
+                <th>Time</th>
+                <th>IP</th>
+              </tr>
+            </thead>
+            <tbody id="voter-log-body">
+              <tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">Loading voter log…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    const COLORS = ['#6366f1','#a855f7','#06b6d4','#f59e0b','#10b981','#e879f9','#38bdf8','#fb923c'];
+    let allVotes = [];
+    let allPolls = [];
+
+    const socket = io();
+    socket.on('connect', () => {
+      socket.emit('join-admin');
+      document.getElementById('conn-dot').className = 'conn-dot connected';
+      document.getElementById('conn-label').textContent = 'Live';
+      document.getElementById('conn-label').style.color = 'var(--green)';
+    });
+    socket.on('disconnect', () => {
+      document.getElementById('conn-dot').className = 'conn-dot disconnected';
+      document.getElementById('conn-label').textContent = 'Offline';
+      document.getElementById('conn-label').style.color = 'var(--red)';
+    });
+    socket.on('admin-stats', (stats) => updateStats(stats));
+    socket.on('admin-vote-update', (poll) => {
+      // Refresh data on new vote
+      loadData();
+      pushActivityFeed(poll);
+    });
+    socket.on('admin-poll-toggled', () => loadData());
+    socket.on('poll-created', () => loadData());
+    socket.on('poll-deleted', () => loadData());
+
+    // ─── Tab Switching ──────────────────────────────────────────
+    function switchTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(`tab-${name}`).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    // ─── Stats ──────────────────────────────────────────────────
+    function updateStats(stats) {
+      document.getElementById('st-polls').textContent = stats.total_polls;
+      document.getElementById('st-active').textContent = stats.active_polls;
+      document.getElementById('st-votes').textContent = stats.total_votes;
+      document.getElementById('st-voters').textContent = stats.unique_voters;
+    }
+
+    // ─── Load All Data ──────────────────────────────────────────
+    async function loadData() {
+      const [statsData, pollsData] = await Promise.all([
+        api('GET', '/api/admin/stats'),
+        api('GET', '/api/polls')
+      ]);
+
+      if (statsData.success) {
+        updateStats(statsData.stats);
+        allVotes = statsData.recentVotes || [];
+        renderVoterLog();
+        updateParticipation(statsData.stats);
+      }
+
+      if (pollsData.success) {
+        allPolls = pollsData.polls;
+        renderLeaderboard();
+        renderPollsTable();
+        renderDonut();
+      }
+    }
+
+    // ─── Leaderboard ────────────────────────────────────────────
+    function renderLeaderboard() {
+      const sorted = [...allPolls].sort((a,b) => b.total_votes - a.total_votes).slice(0, 8);
+      const maxV = Math.max(...sorted.map(p => p.total_votes), 1);
+      document.getElementById('leaderboard-content').innerHTML = sorted.length ? sorted.map((p, i) => `
+        <div style="margin-bottom:1rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <span style="font-size:0.8rem; color:${COLORS[i]}; font-weight:700; width:20px;">#${i+1}</span>
+              <a href="poll.html?id=${p.id}" style="font-size:0.875rem; font-weight:600; color:var(--text-primary); text-decoration:none;"
+                title="${p.title}">${p.title.length > 36 ? p.title.slice(0,36) + '…' : p.title}</a>
+            </div>
+            <span style="font-size:0.78rem; color:var(--text-muted); flex-shrink:0;">${p.total_votes} votes</span>
+          </div>
+          <div class="mini-bar">
+            <div class="mini-bar-fill" style="width:${(p.total_votes/maxV*100)}%; background:${COLORS[i]}"></div>
+          </div>
+        </div>`).join('')
+      : '<div style="color:var(--text-muted); font-size:0.875rem;">No polls yet.</div>';
+    }
+
+    // ─── Donut Chart ─────────────────────────────────────────────
+    function renderDonut() {
+      const pollsWithVotes = allPolls.filter(p => p.total_votes > 0).slice(0, 6);
+      const total = pollsWithVotes.reduce((s, p) => s + p.total_votes, 0);
+      if (!total) {
+        document.getElementById('donut-wrap').innerHTML = '<div style="color:var(--text-muted);">No votes yet…</div>';
+        return;
+      }
+      const r = 40; const circ = 2 * Math.PI * r;
+      let offset = 0;
+      const segs = pollsWithVotes.map((p, i) => {
+        const pct = p.total_votes / total;
+        const dash = pct * circ;
+        const seg = `<circle class="donut-seg" cx="65" cy="65" r="${r}" stroke="${COLORS[i]}"
+          stroke-dasharray="${dash} ${circ - dash}" stroke-dashoffset="${-offset}" />`;
+        offset += dash;
+        return seg;
+      });
+
+      document.getElementById('donut-wrap').innerHTML = `
+        <svg class="donut-svg" viewBox="0 0 130 130">
+          <circle class="donut-bg" cx="65" cy="65" r="${r}" />
+          ${segs.join('')}
+          <text x="65" y="65" text-anchor="middle" dominant-baseline="middle"
+            style="fill:var(--text-primary); font-size:14px; font-weight:700; font-family:Inter,sans-serif; transform:rotate(90deg); transform-origin:65px 65px;">
+            ${total} votes
+          </text>
+        </svg>
+        <div class="donut-legend">
+          ${pollsWithVotes.map((p, i) => `
+            <div class="legend-item">
+              <div class="legend-dot" style="background:${COLORS[i]}"></div>
+              <span title="${p.title}">${p.title.length > 28 ? p.title.slice(0,28)+'…' : p.title}</span>
+              <span style="margin-left:auto; font-weight:600; color:var(--text-primary);">${p.total_votes}</span>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    // ─── Polls Table ─────────────────────────────────────────────
+    function renderPollsTable() {
+      const section = document.getElementById('polls-table-section');
+      if (!allPolls.length) {
+        section.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No polls yet</div><a href="create.html" class="btn btn-primary" style="margin-top:1rem;">Create First Poll</a></div>';
+        return;
+      }
+      section.innerHTML = `
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>Poll Title</th>
+              <th>Status</th>
+              <th>Options</th>
+              <th>Votes</th>
+              <th>Leading Option</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr></thead>
+            <tbody>
+              ${allPolls.map(p => {
+                const leading = p.options.length > 0 ? p.options.reduce((a,b) => a.vote_count > b.vote_count ? a : b) : null;
+                return `<tr id="poll-row-${p.id}">
+                  <td><a href="poll.html?id=${p.id}" style="color:var(--accent-light); text-decoration:none;">${p.title}</a></td>
+                  <td><span class="badge ${p.is_active ? 'badge-active' : 'badge-closed'}">${p.is_active ? '🟢 Active' : '🔴 Closed'}</span></td>
+                  <td>${p.options.length}</td>
+                  <td><strong>${p.total_votes}</strong></td>
+                  <td style="color:${p.total_votes > 0 ? 'var(--green)' : 'var(--text-muted)'};">${p.total_votes > 0 && leading ? leading.label : '—'}</td>
+                  <td>${formatDate(p.created_at)}</td>
+                  <td>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                      <button class="btn btn-sm ${p.is_active ? 'btn-danger' : 'btn-success'}"
+                        onclick="togglePoll('${p.id}', ${p.is_active})">
+                        ${p.is_active ? '🔒 Close' : '🔓 Open'}
+                      </button>
+                      <button class="btn btn-sm btn-secondary" onclick="window.open('poll.html?id=${p.id}','_blank')">👁️</button>
+                      <button class="btn btn-sm btn-danger" onclick="deletePoll('${p.id}', '${p.title.replace(/'/g,"\\'")}')">🗑️</button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    // ─── Voter Log ────────────────────────────────────────────────
+    function renderVoterLog(filter = '') {
+      const body = document.getElementById('voter-log-body');
+      let votes = allVotes;
+      if (filter) {
+        const f = filter.toLowerCase();
+        votes = votes.filter(v =>
+          v.session_id.toLowerCase().includes(f) ||
+          v.option_label.toLowerCase().includes(f) ||
+          v.poll_title.toLowerCase().includes(f)
+        );
+      }
+      if (!votes.length) {
+        body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">${filter ? 'No results matching filter' : 'No votes yet'}</td></tr>`;
+        return;
+      }
+      body.innerHTML = votes.map((v, i) => `
+        <tr>
+          <td style="color:var(--text-muted);">${i + 1}</td>
+          <td>
+            <span class="voter-chip">
+              <div class="chip-avatar">${v.session_id.slice(5, 7).toUpperCase()}</div>
+              ${v.session_id.slice(0, 16)}…
+            </span>
+          </td>
+          <td><a href="poll.html?id=${v.poll_id}" style="color:var(--accent-light); text-decoration:none;"
+            title="${v.poll_title}">${v.poll_title.length > 30 ? v.poll_title.slice(0,30)+'…' : v.poll_title}</a></td>
+          <td style="color:var(--green); font-weight:600;">✓ ${v.option_label}</td>
+          <td title="${v.created_at}">${relativeTime(v.created_at)}</td>
+          <td style="color:var(--text-muted); font-size:0.78rem;">${v.ip_address || '—'}</td>
+        </tr>`).join('');
+
+      // Latest vote
+      if (votes.length > 0) {
+        const latest = votes[0];
+        document.getElementById('latest-vote-label').textContent = `"${latest.option_label}" on "${latest.poll_title.slice(0,24)}…"`;
+        document.getElementById('latest-vote-time').textContent = relativeTime(latest.created_at);
+      }
+    }
+
+    function filterVoterLog() {
+      const f = document.getElementById('voter-search').value;
+      renderVoterLog(f);
+    }
+
+    // ─── Participation ────────────────────────────────────────────
+    function updateParticipation(stats) {
+      const avg = stats.total_polls > 0 ? (stats.total_votes / stats.total_polls).toFixed(1) : '0';
+      document.getElementById('participation-rate').textContent = avg;
+    }
+
+    // ─── Activity Feed ─────────────────────────────────────────────
+    let feedItems = [];
+    function pushActivityFeed(poll) {
+      const feed = document.getElementById('activity-feed');
+      const latest = poll.options.reduce((a,b) => a.vote_count > b.vote_count ? a : b, poll.options[0]);
+      const item = document.createElement('div');
+      item.className = 'activity-item';
+      item.innerHTML = `
+        <div class="activity-icon">🗳️</div>
+        <div class="activity-content">
+          <div class="activity-label">New vote on "<strong>${poll.title.slice(0,30)}</strong>"</div>
+          <div class="activity-meta">Leading: ${latest.label} · ${poll.total_votes} total · ${relativeTime(new Date().toISOString())}</div>
+        </div>`;
+      if (feed.firstChild && feed.firstChild.textContent === 'Waiting for votes…') {
+        feed.innerHTML = '';
+      }
+      feed.insertBefore(item, feed.firstChild);
+      feedItems.push(item);
+      if (feedItems.length > 20) { feedItems.shift().remove(); }
+    }
+
+    // ─── Admin Actions ────────────────────────────────────────────
+    async function togglePoll(id, isActive) {
+      const data = await api('PATCH', `/api/polls/${id}/toggle`);
+      if (data.success) {
+        showToast(isActive ? 'Poll closed' : 'Poll opened', 'success');
+        loadData();
+      } else showToast(data.error, 'error');
+    }
+
+    async function deletePoll(id, title) {
+      if (!confirm(`Delete poll "${title}"? This cannot be undone.`)) return;
+      const data = await api('DELETE', `/api/polls/${id}`);
+      if (data.success) {
+        showToast('Poll deleted', 'success');
+        loadData();
+      } else showToast(data.error, 'error');
+    }
+
+    loadData();
+  </script>
+</body>
+</html>

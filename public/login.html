@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — VoteLive</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="index.html"><div class="logo-icon">🗳️</div> VoteLive</a>
+    <div class="navbar-links">
+      <a href="index.html" class="nav-link">Polls</a>
+      <a href="login.html" class="nav-link active">Login</a>
+      <a href="register.html" class="nav-link">Register</a>
+    </div>
+  </nav>
+
+  <div id="toast-container"></div>
+
+  <div class="container">
+    <div class="page-header" style="text-align: center;">
+      <h1 class="page-title">Welcome Back</h1>
+      <p class="page-subtitle">Login to access your unique voter code and participate in live polls.</p>
+    </div>
+
+    <div style="max-width: 400px; margin: 0 auto;">
+      <div class="card" style="padding: 2rem;">
+        <form id="login-form">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input id="login-username" class="form-input" type="text" placeholder="Enter your username" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input id="login-password" class="form-input" type="password" placeholder="Enter your password" required />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px; margin-top: 1rem;">
+            🔑 Login
+          </button>
+        </form>
+        <div style="margin-top: 1.5rem; text-align: center; font-size: 0.875rem; color: var(--text-secondary);">
+          Don't have an account? <a href="register.html" style="color: var(--accent-light); text-decoration: none; font-weight: 600;">Register here</a>
+        </div>
+      </div>
+
+      <!-- Result Card (Initially Hidden) -->
+      <div id="result-card" class="card" style="margin-top: 1.5rem; padding: 2rem; display: none; text-align: center; background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.2);">
+        <div style="font-size: 2.5rem; margin-bottom: 1rem;">🔑</div>
+        <h3 style="color: var(--accent-light); margin-bottom: 0.5rem;">Login Successful!</h3>
+        <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">Your unique voter code is:</p>
+        <div id="login-unique-code" style="font-size: 1.5rem; font-weight: 800; letter-spacing: 0.1em; color: var(--text-primary); background: rgba(255,255,255,0.05); padding: 12px; border-radius: var(--radius-sm); border: 1px dashed var(--accent); margin-bottom: 1.5rem;">
+          CODE
+        </div>
+        <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="window.location='index.html'">
+          Go to Polls
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value.trim();
+
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Authenticating...';
+
+      const data = await api('POST', '/api/auth/login', { username, password });
+      
+      if (data.success) {
+        showToast('Login successful!', 'success');
+        document.getElementById('login-form').parentElement.style.display = 'none';
+        document.getElementById('login-unique-code').textContent = data.uniqueCode;
+        document.getElementById('result-card').style.display = 'block';
+        
+        // Save unique code to localStorage if needed for future voting sessions
+        localStorage.setItem('voter_unique_code', data.uniqueCode);
+      } else {
+        showToast(data.error || 'Login failed', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '🔑 Login';
+      }
+    });
+  </script>
+</body>
+</html>

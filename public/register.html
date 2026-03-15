@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register — VoteLive</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="index.html"><div class="logo-icon">🗳️</div> VoteLive</a>
+    <div class="navbar-links">
+      <a href="index.html" class="nav-link">Polls</a>
+      <a href="login.html" class="nav-link">Login</a>
+      <a href="register.html" class="nav-link active">Register</a>
+    </div>
+  </nav>
+
+  <div id="toast-container"></div>
+
+  <div class="container">
+    <div class="page-header" style="text-align: center;">
+      <h1 class="page-title">Create an Account</h1>
+      <p class="page-subtitle">Join VoteLive to participate and get your unique voter code.</p>
+    </div>
+
+    <div style="max-width: 400px; margin: 0 auto;">
+      <div class="card" style="padding: 2rem;">
+        <form id="register-form">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input id="reg-username" class="form-input" type="text" placeholder="Choose a username" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input id="reg-password" class="form-input" type="password" placeholder="Create a password" required />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px; margin-top: 1rem;">
+            ✨ Register Now
+          </button>
+        </form>
+        <div style="margin-top: 1.5rem; text-align: center; font-size: 0.875rem; color: var(--text-secondary);">
+          Already have an account? <a href="login.html" style="color: var(--accent-light); text-decoration: none; font-weight: 600;">Login here</a>
+        </div>
+      </div>
+
+      <!-- Success Card (Initially Hidden) -->
+      <div id="success-card" class="card" style="margin-top: 1.5rem; padding: 2rem; display: none; text-align: center; background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.2);">
+        <div style="font-size: 2.5rem; margin-bottom: 1rem;">🎉</div>
+        <h3 style="color: var(--green); margin-bottom: 0.5rem;">Registration Successful!</h3>
+        <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">Here is your unique voter code:</p>
+        <div id="reg-unique-code" style="font-size: 1.5rem; font-weight: 800; letter-spacing: 0.1em; color: var(--text-primary); background: rgba(255,255,255,0.05); padding: 12px; border-radius: var(--radius-sm); border: 1px dashed var(--green); margin-bottom: 1.5rem;">
+          CODE
+        </div>
+        <button class="btn btn-success" style="width: 100%; justify-content: center;" onclick="window.location='login.html'">
+          Go to Login
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
+  <script>
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value.trim();
+
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Registering...';
+
+      const data = await api('POST', '/api/auth/register', { username, password });
+      
+      if (data.success) {
+        showToast('Account created!', 'success');
+        document.getElementById('register-form').parentElement.style.display = 'none';
+        document.getElementById('reg-unique-code').textContent = data.uniqueCode;
+        document.getElementById('success-card').style.display = 'block';
+      } else {
+        showToast(data.error || 'Registration failed', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '✨ Register Now';
+      }
+    });
+  </script>
+</body>
+</html>

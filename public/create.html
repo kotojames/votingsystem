@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Poll — VoteLive</title>
+  <meta name="description" content="Create a new real-time poll and share it with your audience." />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="index.html"><div class="logo-icon">🗳️</div> VoteLive</a>
+    <div class="navbar-links">
+      <span class="live-badge"><span class="live-dot"></span> Live</span>
+      <a href="index.html" class="nav-link">Polls</a>
+      <a href="create.html" class="nav-link">Create</a>
+      <a href="login.html" class="nav-link">Login</a>
+      <a href="admin.html" class="nav-link">Admin</a>
+    </div>
+  </nav>
+
+  <div id="toast-container"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <h1 class="page-title">Create a Poll</h1>
+      <p class="page-subtitle">Fill in the details below and share your poll with the world.</p>
+    </div>
+
+    <div style="max-width:640px;">
+      <div class="card" style="padding:2rem;">
+        <form id="create-form">
+          <div class="form-group">
+            <label class="form-label">Poll Question *</label>
+            <input id="poll-title" class="form-input" type="text" maxlength="200"
+              placeholder="e.g. What's your favourite programming language?" required />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Description <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
+            <textarea id="poll-desc" class="form-textarea" rows="3"
+              placeholder="Add more context for voters…"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Answer Options</label>
+            <div id="options-list"></div>
+            <button type="button" class="btn btn-secondary btn-sm" id="add-option-btn"
+              style="margin-top:0.5rem;" onclick="addOption()">
+              + Add Option
+            </button>
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem;">
+              Minimum 2 options · Maximum 8 options
+            </div>
+          </div>
+
+          <div style="display:flex; gap:1rem; margin-top:1.5rem;">
+            <button type="submit" class="btn btn-primary" id="submit-btn" style="flex:1; justify-content:center; padding:14px;">
+              🚀 Create & Share Poll
+            </button>
+            <a href="index.html" class="btn btn-secondary" style="padding:14px 20px;">Cancel</a>
+          </div>
+        </form>
+      </div>
+
+      <!-- Preview -->
+      <div class="card" style="margin-top:1.25rem; padding:1.5rem;">
+        <div class="section-title">👁️ Preview</div>
+        <div id="preview-content" style="color:var(--text-muted); font-size:0.875rem;">
+          Start filling in the form to see a preview here…
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
+  <script>
+    const letters = 'ABCDEFGH';
+    let optionCount = 0;
+
+    function addOption(value = '') {
+      if (optionCount >= 8) { showToast('Maximum 8 options allowed', 'error'); return; }
+      optionCount++;
+      const idx = document.getElementById('options-list').children.length;
+      const row = document.createElement('div');
+      row.className = 'option-row';
+      row.dataset.id = optionCount;
+      row.innerHTML = `
+        <div class="option-index">${letters[idx] || idx + 1}</div>
+        <input class="form-input option-input" type="text" placeholder="Option ${letters[idx] || idx + 1}"
+          maxlength="120" value="${value}" oninput="updatePreview()" />
+        <button type="button" class="option-remove" onclick="removeOption(this)" title="Remove">✕</button>
+      `;
+      document.getElementById('options-list').appendChild(row);
+      updatePreview();
+      reindexOptions();
+    }
+
+    function removeOption(btn) {
+      const list = document.getElementById('options-list');
+      if (list.children.length <= 2) { showToast('Need at least 2 options', 'error'); return; }
+      btn.closest('.option-row').remove();
+      optionCount--;
+      reindexOptions();
+      updatePreview();
+    }
+
+    function reindexOptions() {
+      document.querySelectorAll('.option-row').forEach((row, i) => {
+        row.querySelector('.option-index').textContent = letters[i] || i + 1;
+        row.querySelector('input').placeholder = `Option ${letters[i] || i + 1}`;
+      });
+    }
+
+    function updatePreview() {
+      const title = document.getElementById('poll-title').value.trim();
+      const opts = [...document.querySelectorAll('.option-input')].map(i => i.value.trim()).filter(Boolean);
+      const preview = document.getElementById('preview-content');
+      if (!title) { preview.innerHTML = '<span style="color:var(--text-muted);">Start filling in the form to see a preview here…</span>'; return; }
+      preview.innerHTML = `
+        <h3 style="font-size:1rem; font-weight:700; margin-bottom:1rem; color:var(--text-primary);">${title}</h3>
+        <div class="vote-options">
+          ${opts.map((o, i) => `
+            <div class="vote-btn" style="cursor:default;">
+              <div class="vote-letter">${letters[i]}</div>
+              ${o}
+            </div>`).join('')}
+        </div>`;
+    }
+
+    document.getElementById('poll-title').addEventListener('input', updatePreview);
+
+    document.getElementById('create-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('poll-title').value.trim();
+      const description = document.getElementById('poll-desc').value.trim();
+      const options = [...document.querySelectorAll('.option-input')].map(i => i.value.trim()).filter(Boolean);
+
+      if (!title) { showToast('Please enter a poll question', 'error'); return; }
+      if (options.length < 2) { showToast('Please add at least 2 options', 'error'); return; }
+
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Creating…';
+
+      const data = await api('POST', '/api/polls', { title, description, options });
+      if (data.success) {
+        showToast('Poll created!', 'success');
+        setTimeout(() => { window.location = `poll.html?id=${data.poll.id}`; }, 600);
+      } else {
+        showToast(data.error || 'Failed to create poll', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '🚀 Create & Share Poll';
+      }
+    });
+
+    // Start with 3 default options
+    addOption(); addOption(); addOption();
+  </script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoteLive — Real-Time Voting Platform</title>
+  <meta name="description" content="Create polls, vote, and watch real-time live results update instantly." />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar">
+    <a class="navbar-brand" href="index.html">
+      <div class="logo-icon">🗳️</div> VoteLive
+    </a>
+    <div class="navbar-links">
+      <span class="live-badge"><span class="live-dot"></span> Live</span>
+      <a href="index.html" class="nav-link">Polls</a>
+      <a href="create.html" class="nav-link">Create</a>
+      <a href="login.html" class="nav-link">Login</a>
+      <a href="admin.html" class="nav-link">Admin</a>
+    </div>
+  </nav>
+
+  <div id="toast-container"></div>
+
+  <!-- Hero -->
+  <div class="container">
+    <div class="page-header" style="padding-top:4rem; text-align:center;">
+      <div style="font-size:3.5rem; margin-bottom:1rem;">🗳️</div>
+      <h1 class="page-title" style="font-size:3rem;">Real-Time Voting <br/>Made Beautiful</h1>
+      <p class="page-subtitle" style="font-size:1.1rem; max-width:480px; margin:0.75rem auto;">
+        Create polls in seconds, share with anyone, and watch live results update as votes come in.
+      </p>
+      <div style="display:flex; gap:1rem; justify-content:center; margin-top:2rem;">
+        <a href="create.html" class="btn btn-primary" style="padding:14px 28px; font-size:1rem;">
+          ✨ Create a Poll
+        </a>
+        <a href="admin.html" class="btn btn-secondary" style="padding:14px 28px; font-size:1rem;">
+          📊 Admin Dashboard
+        </a>
+      </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="stats-grid" id="stats-bar" style="margin-top:0;">
+      <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-label">Total Polls</div><div class="stat-value" id="s-polls">—</div></div>
+      <div class="stat-card"><div class="stat-icon">🟢</div><div class="stat-label">Active Polls</div><div class="stat-value" id="s-active">—</div></div>
+      <div class="stat-card"><div class="stat-icon">🗳️</div><div class="stat-label">Votes Cast</div><div class="stat-value" id="s-votes">—</div></div>
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-label">Unique Voters</div><div class="stat-value" id="s-voters">—</div></div>
+    </div>
+
+    <!-- Polls Grid -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin:2rem 0 1rem;">
+      <h2 style="font-size:1.2rem; font-weight:700;">All Polls</h2>
+      <a href="create.html" class="btn btn-primary btn-sm">+ New Poll</a>
+    </div>
+
+    <div id="polls-grid" class="card-grid">
+      <div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Loading polls…</div></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    const socket = io();
+
+    async function loadStats() {
+      const data = await api('GET', '/api/admin/stats');
+      if (data.success) {
+        document.getElementById('s-polls').textContent = data.stats.total_polls;
+        document.getElementById('s-active').textContent = data.stats.active_polls;
+        document.getElementById('s-votes').textContent = data.stats.total_votes;
+        document.getElementById('s-voters').textContent = data.stats.unique_voters;
+      }
+    }
+
+    async function loadPolls() {
+      const data = await api('GET', '/api/polls');
+      const grid = document.getElementById('polls-grid');
+      if (!data.success || !data.polls.length) {
+        grid.innerHTML = `
+          <div class="empty-state" style="grid-column:1/-1;">
+            <div class="empty-icon">🗳️</div>
+            <div class="empty-title">No polls yet</div>
+            <p style="margin-top:0.5rem; font-size:0.875rem;">Be the first to create one!</p>
+            <a href="create.html" class="btn btn-primary" style="margin-top:1rem;">Create Poll</a>
+          </div>`;
+        return;
+      }
+
+      grid.innerHTML = data.polls.map(poll => {
+        const maxVotes = Math.max(...poll.options.map(o => o.vote_count), 1);
+        const leading = poll.options.reduce((a, b) => a.vote_count > b.vote_count ? a : b, poll.options[0]);
+        return `
+          <div class="card" style="cursor:pointer;" onclick="window.location='poll.html?id=${poll.id}'">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
+              <span class="badge ${poll.is_active ? 'badge-active' : 'badge-closed'}">${poll.is_active ? '🟢 Active' : '🔴 Closed'}</span>
+              <span style="font-size:0.75rem; color:var(--text-muted);">${formatDate(poll.created_at)}</span>
+            </div>
+            <h3 style="font-size:1rem; font-weight:700; margin-bottom:0.5rem; line-height:1.4;">${poll.title}</h3>
+            ${poll.description ? `<p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem;">${poll.description}</p>` : ''}
+            <div style="margin: 0.5rem 0">
+              ${poll.options.slice(0, 3).map(opt => `
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                  <div style="flex:1; background:rgba(255,255,255,0.06); border-radius:100px; height:6px; overflow:hidden;">
+                    <div style="height:100%; width:${poll.total_votes > 0 ? (opt.vote_count / maxVotes * 100) : 0}%; background:linear-gradient(90deg,var(--accent),var(--purple)); border-radius:100px; transition:width 0.5s"></div>
+                  </div>
+                  <span style="font-size:0.75rem; color:var(--text-muted); min-width:28px; text-align:right;">${opt.vote_count}</span>
+                </div>
+              `).join('')}
+              ${poll.options.length > 3 ? `<div style="font-size:0.75rem; color:var(--text-muted);">+${poll.options.length - 3} more options</div>` : ''}
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border);">
+              <span style="font-size:0.8rem; color:var(--text-secondary);">🗳️ ${poll.total_votes} vote${poll.total_votes !== 1 ? 's' : ''}</span>
+              ${poll.total_votes > 0 ? `<span style="font-size:0.75rem; color:var(--green);">🥇 ${leading.label}</span>` : '<span style="font-size:0.75rem; color:var(--text-muted);">No votes yet</span>'}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // Real-time updates
+    socket.on('poll-created', () => { loadPolls(); loadStats(); });
+    socket.on('vote-update', () => { loadPolls(); loadStats(); });
+    socket.on('poll-deleted', () => { loadPolls(); loadStats(); });
+
+    loadStats();
+    loadPolls();
+  </script>
+</body>
+</html>

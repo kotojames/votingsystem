@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vote — VoteLive</title>
+  <meta name="description" content="Vote on this poll and see live real-time results." />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="index.html"><div class="logo-icon">🗳️</div> VoteLive</a>
+    <div class="navbar-links">
+      <div class="conn-status">
+        <div class="conn-dot disconnected" id="conn-dot"></div>
+        <span id="conn-label" style="color:var(--text-muted);">Connecting…</span>
+      </div>
+      <a href="index.html" class="nav-link">Polls</a>
+      <a href="login.html" class="nav-link">Login</a>
+      <a href="admin.html" class="nav-link">Admin</a>
+    </div>
+  </nav>
+
+  <div id="toast-container"></div>
+
+  <div class="container">
+    <div id="loading-state" style="text-align:center; padding:5rem 0;">
+      <div class="spinner" style="margin:0 auto; width:36px; height:36px; border-width:3px;"></div>
+      <p style="margin-top:1rem; color:var(--text-muted);">Loading poll…</p>
+    </div>
+    <div id="poll-content" style="display:none; padding:2.5rem 0;">
+      <!-- Injected dynamically -->
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    const pollId = new URLSearchParams(location.search).get('id');
+    const sessionId = getSessionId();
+    const socket = io();
+    let currentPoll = null;
+    let hasVoted = false;
+    let votedOptionId = null;
+    const COLORS = ['var(--accent)','var(--purple)','var(--cyan)','var(--orange)','var(--green)','#e879f9','#38bdf8','#fb923c'];
+
+    if (!pollId) { window.location = 'index.html'; }
+
+    // ─── Socket ──────────────────────────────────────────────────
+    socket.on('connect', () => {
+      document.getElementById('conn-dot').className = 'conn-dot connected';
+      document.getElementById('conn-label').textContent = 'Live';
+      document.getElementById('conn-label').style.color = 'var(--green)';
+      socket.emit('join-poll', pollId);
+    });
+    socket.on('disconnect', () => {
+      document.getElementById('conn-dot').className = 'conn-dot disconnected';
+      document.getElementById('conn-label').textContent = 'Reconnecting…';
+      document.getElementById('conn-label').style.color = 'var(--red)';
+    });
+    socket.on('vote-update', (poll) => { updateResults(poll); });
+    socket.on('poll-status-changed', (poll) => {
+      currentPoll = poll;
+      renderPoll(poll);
+      if (!poll.is_active) showToast('This poll has been closed by the admin', 'info');
+    });
+
+    // ─── Load Poll ───────────────────────────────────────────────
+    async function loadPoll() {
+      const data = await api('GET', `/api/polls/${pollId}`);
+      if (!data.success) { showToast('Poll not found', 'error'); window.location = 'index.html'; return; }
+      document.title = `${data.poll.title} — VoteLive`;
+      currentPoll = data.poll;
+
+      // Check localStorage for prior vote
+      const storedVote = localStorage.getItem(`voted_${pollId}`);
+      if (storedVote) { hasVoted = true; votedOptionId = storedVote; }
+
+      document.getElementById('loading-state').style.display = 'none';
+      document.getElementById('poll-content').style.display = 'block';
+      renderPoll(data.poll);
+    }
+
+    // ─── Render ──────────────────────────────────────────────────
+    function renderPoll(poll) {
+      const shareUrl = window.location.href;
+      const totalVotes = poll.total_votes;
+      const leading = poll.options.reduce((a,b) => a.vote_count > b.vote_count ? a : b, poll.options[0]);
+
+      document.getElementById('poll-content').innerHTML = `
+        <div class="split-layout">
+          <!-- Left: Vote Panel -->
+          <div>
+            <div class="card" style="padding:2rem;">
+              <div style="display:flex; gap:10px; align-items:center; margin-bottom:1rem;">
+                <span class="badge ${poll.is_active ? 'badge-active' : 'badge-closed'}">${poll.is_active ? '🟢 Active' : '🔴 Closed'}</span>
+                <span style="font-size:0.75rem; color:var(--text-muted);">${formatDate(poll.created_at)}</span>
+              </div>
+              <h1 style="font-size:1.4rem; font-weight:800; line-height:1.3; margin-bottom:0.5rem;">${poll.title}</h1>
+              ${poll.description ? `<p style="font-size:0.875rem; color:var(--text-muted); margin-bottom:1rem;">${poll.description}</p>` : ''}
+
+              <div id="vote-panel">
+                ${renderVotePanel(poll)}
+              </div>
+            </div>
+
+            <!-- Share -->
+            <div class="card" style="margin-top:1rem; padding:1.25rem;">
+              <div class="section-title">🔗 Share This Poll</div>
+              <div class="share-box">
+                <span>${shareUrl}</span>
+                <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('${shareUrl}')">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Live Results -->
+          <div>
+            <div class="card" style="padding:2rem; height:100%;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
+                <div class="section-title" style="margin:0;">📊 Live Results</div>
+                <div>
+                  <span class="live-badge"><span class="live-dot"></span> Real-time</span>
+                </div>
+              </div>
+              <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1.5rem;">
+                🗳️ <strong style="color:var(--text-secondary);" id="total-count">${totalVotes}</strong> total vote${totalVotes !== 1 ? 's' : ''}
+                ${totalVotes > 0 ? ` &nbsp;·&nbsp; 🥇 Leading: <strong style="color:var(--green);">${leading.label}</strong>` : ''}
+              </div>
+              <div id="results-bars" class="results-container">
+                ${renderBars(poll)}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderVotePanel(poll) {
+      if (!poll.is_active) {
+        return `<div style="text-align:center; padding:1.5rem; color:var(--text-muted);">
+          <div style="font-size:2rem; margin-bottom:0.5rem;">🔒</div>
+          <p>This poll is closed. No more votes accepted.</p>
+        </div>`;
+      }
+      if (hasVoted) {
+        return `<div>
+          <div style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:1rem; font-size:0.85rem; color:var(--accent-light);">
+            ✅ You have already voted in this poll.
+          </div>
+          <div class="vote-options">
+            ${poll.options.map((o, i) => `
+              <div class="vote-btn ${o.id === votedOptionId ? 'voted' : ''}" style="cursor:default;">
+                <div class="vote-letter" style="background:${COLORS[i]}">${String.fromCharCode(65+i)}</div>
+                ${o.label}
+                ${o.id === votedOptionId ? ' ✓' : ''}
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }
+      return `
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;">Choose your answer:</p>
+        <div class="vote-options">
+          ${poll.options.map((o, i) => `
+            <button class="vote-btn" id="vbtn-${o.id}" onclick="submitVote('${o.id}')">
+              <div class="vote-letter" style="background:${COLORS[i]}">${String.fromCharCode(65+i)}</div>
+              ${o.label}
+            </button>`).join('')}
+        </div>`;
+    }
+
+    function renderBars(poll) {
+      const total = poll.total_votes;
+      const maxCount = Math.max(...poll.options.map(o => o.vote_count), 1);
+      return poll.options.map((o, i) => {
+        const pct = total > 0 ? ((o.vote_count / total) * 100).toFixed(1) : '0.0';
+        const isLeading = o.vote_count === maxCount && o.vote_count > 0;
+        return `
+          <div class="option-result">
+            <div class="result-header">
+              <span class="result-label" style="color:${COLORS[i]}">${o.label}</span>
+              <span class="result-count">${o.vote_count} vote${o.vote_count !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="bar-bg">
+              <div class="bar-fill ${isLeading ? 'winner' : ''}" style="width:${pct}%; background:${isLeading ? '' : COLORS[i]}; opacity:${isLeading ? 1 : 0.7}"></div>
+            </div>
+            <div class="percentage-label" style="color:${COLORS[i]}">${pct}%</div>
+          </div>`;
+      }).join('');
+    }
+
+    function updateResults(poll) {
+      currentPoll = poll;
+      const barsEl = document.getElementById('results-bars');
+      const countEl = document.getElementById('total-count');
+      if (barsEl) barsEl.innerHTML = renderBars(poll);
+      if (countEl) countEl.textContent = poll.total_votes;
+    }
+
+    // ─── Vote ─────────────────────────────────────────────────────
+    async function submitVote(optionId) {
+      if (hasVoted) { showToast('You have already voted!', 'error'); return; }
+      if (!currentPoll || !currentPoll.is_active) { showToast('This poll is closed', 'error'); return; }
+
+      // Disable all buttons
+      document.querySelectorAll('.vote-btn').forEach(b => b.disabled = true);
+
+      const data = await api('POST', `/api/polls/${pollId}/vote`, { optionId, sessionId });
+
+      if (data.success) {
+        hasVoted = true;
+        votedOptionId = optionId;
+        localStorage.setItem(`voted_${pollId}`, optionId);
+        showToast('Vote submitted! 🎉', 'success');
+        currentPoll = data.poll;
+        const vp = document.getElementById('vote-panel');
+        if (vp) vp.innerHTML = renderVotePanel(data.poll);
+        updateResults(data.poll);
+      } else if (data.error === 'Already voted') {
+        hasVoted = true;
+        votedOptionId = data.votedOptionId;
+        localStorage.setItem(`voted_${pollId}`, data.votedOptionId);
+        showToast('You have already voted', 'info');
+        const vp = document.getElementById('vote-panel');
+        if (vp) vp.innerHTML = renderVotePanel(currentPoll);
+      } else {
+        showToast(data.error || 'Failed to vote', 'error');
+        document.querySelectorAll('.vote-btn').forEach(b => b.disabled = false);
+      }
+    }
+
+    loadPoll();
+  </script>
+</body>
+</html>
