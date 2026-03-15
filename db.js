@@ -9,7 +9,12 @@ const dbPath = path.join(dbDir, dbName);
 
 // Ensure directory exists if it's not the current one
 if (dbDir !== __dirname && !fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+  try {
+    fs.mkdirSync(dbDir, { recursive: true });
+  } catch (err) {
+    console.warn(`⚠️ Warning: Could not create directory ${dbDir}: ${err.message}`);
+    console.warn(`Ensure the path is writable or pre-mounted by your hosting provider.`);
+  }
 }
 
 const db = new Database(dbPath);
